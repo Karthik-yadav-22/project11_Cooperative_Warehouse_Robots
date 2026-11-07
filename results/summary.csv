@@ -1,0 +1,7 @@
+method,seeds,mean_deliveries,episode_std,per_seed_means,steps
+"Sparse reward, base obs",1,0.0,0.0,0.0,2.0M
+"Shaped reward, base obs",1,0.0,0.0,0.0,1.0M
+Sparse reward + task hints,2,26.9,3.4,"27.1, 26.8",1.0M
+Shaped reward + task hints,2,26.9,4.2,"26.4, 27.3",1.0M
+Scripted heuristic (privileged),1,15.7,10.0,15.7,-
+Random policy,1,0.0,0.0,0.0,-
