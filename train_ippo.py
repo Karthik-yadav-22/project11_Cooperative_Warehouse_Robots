@@ -3,13 +3,18 @@
 All robots share one actor-critic network (each robot feeds its own local observation).
 Usage: python train_ippo.py --reward {sparse,shaped} --seed 0 --steps 2000000
 """
-import argparse, csv, os, time
+import argparse
+import csv
+import os
+import time
+
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
 from common import make_train_env, stack, evaluate
+
 
 p = argparse.ArgumentParser()
 p.add_argument("--reward", default="shaped", choices=["sparse", "shaped"])
@@ -30,8 +35,10 @@ p.add_argument("--eval_eps", type=int, default=10)
 p.add_argument("--out", default="results")
 args = p.parse_args()
 
+
 torch.set_num_threads(1)
-torch.manual_seed(args.seed); np.random.seed(args.seed)
+torch.manual_seed(args.seed)
+np.random.seed(args.seed)
 os.makedirs(args.out, exist_ok=True)
 tag = f"ippo_{args.reward}_aug{args.aug}_s{args.seed}"
 
@@ -40,7 +47,8 @@ class AC(nn.Module):
     def __init__(s, obs_dim, n_act, h=128):
         super().__init__()
         s.body = nn.Sequential(nn.Linear(obs_dim, h), nn.Tanh(), nn.Linear(h, h), nn.Tanh())
-        s.pi, s.v = nn.Linear(h, n_act), nn.Linear(h, 1)
+        s.pi = nn.Linear(h, n_act)
+        s.v = nn.Linear(h, 1)
 
     def forward(s, x):
         z = s.body(x)
@@ -80,13 +88,16 @@ for upd in range(n_updates):
     for t in range(T):
         with torch.no_grad():
             logits, val = net(torch.as_tensor(obs.reshape(E * A, D)))
-            d = Categorical(logits=logits); a = d.sample(); lp = d.log_prob(a)
+            d = Categorical(logits=logits)
+            a = d.sample()
+            lp = d.log_prob(a)
         a_np = a.numpy().reshape(E, A)
         B_obs[t], B_act[t] = obs, a_np
         B_lp[t], B_val[t] = lp.numpy().reshape(E, A), val.numpy().reshape(E, A)
         for i, e in enumerate(envs):
             o, r, term, trunc, _ = e.step(list(a_np[i]))
-            B_rew[t, i] = r; ep_ret[i] += np.sum(r)
+            B_rew[t, i] = r
+            ep_ret[i] += np.sum(r)
             done = term or trunc
             B_done[t, i] = done
             if done:                                   # 500-step time limit = truncation, not a real terminal
@@ -124,8 +135,10 @@ for upd in range(n_updates):
             pg = -torch.min(ratio * ad, ratio.clamp(1 - args.clip, 1 + args.clip) * ad).mean()
             vl = 0.5 * (v - f_ret[idx]).pow(2).mean()
             loss = pg + 0.5 * vl - args.ent * d.entropy().mean()
-            opt.zero_grad(); loss.backward()
-            nn.utils.clip_grad_norm_(net.parameters(), 0.5); opt.step()
+            opt.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(net.parameters(), 0.5)
+            opt.step()
 
     if steps % args.eval_every < T * E or upd == n_updates - 1:
         m, sd, _ = evaluate(policy_fn(), args.eval_eps, seed0=50_000, augment=bool(args.aug))
@@ -134,7 +147,9 @@ for upd in range(n_updates):
         print(f"{tag} steps={steps} eval_deliveries={m:.2f}±{sd:.2f} train_ret={tr:.2f} "
               f"{steps / (time.time() - t0):.0f} sps", flush=True)
         with open(f"{args.out}/{tag}.csv", "w", newline="") as f:
-            w = csv.writer(f); w.writerow(["steps", "eval_mean", "eval_std", "train_return"]); w.writerows(log)
+            w = csv.writer(f)
+            w.writerow(["steps", "eval_mean", "eval_std", "train_return"])
+            w.writerows(log)
 
 torch.save(net.state_dict(), f"{args.out}/{tag}.pt")
 m, sd, scores = evaluate(policy_fn(), 50, seed0=90_000, augment=bool(args.aug))
